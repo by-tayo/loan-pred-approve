@@ -32,7 +32,7 @@ The project objectives are:
 
 ## 📂 Files
 
-* `loan data.csv` – Dataset containing applicant and loan information.
+* `loan_prediction_data.csv` – Dataset containing applicant and loan information.
 * `loan data.ipynb` – Jupyter Notebook containing preprocessing, model training, evaluation, and visualizations.
 
 ---
