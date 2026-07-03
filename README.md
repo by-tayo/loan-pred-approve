@@ -32,6 +32,7 @@ The project objectives are:
 
 ## 📂 Files
 
+* `loan data.csv` – Dataset containing applicant and loan information.
 * `Loan Data Using Machine Learning.ipynb` – Jupyter Notebook containing preprocessing, model training, evaluation, and visualizations.
 
 ---
