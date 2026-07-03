@@ -65,7 +65,7 @@ The project objectives are:
 ## 🚀 Future Improvements
 
 * Apply advanced ensemble methods (XGBoost, LightGBM, CatBoost) for higher accuracy.
-    Use cross-validation and hyperparameter tuning (GridSearchCV, RandomizedSearchCV).
-    Handle class imbalance with SMOTE or other resampling methods.
-    Incorporate explainable AI (XAI) tools such as SHAP or LIME to improve interpretability.
-    Deploy the model as a web application to allow users to test loan approval predictions interactively.
+* Use cross-validation and hyperparameter tuning (GridSearchCV, RandomizedSearchCV).
+* Handle class imbalance with SMOTE or other resampling methods.
+* Incorporate explainable AI (XAI) tools such as SHAP or LIME to improve interpretability.
+* Deploy the model as a web application to allow users to test loan approval predictions interactively.
