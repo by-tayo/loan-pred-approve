@@ -4,7 +4,7 @@
 
 🔗 **Streamlit Application:**
 
-👉 https://loanapprovalpredictionmodel-cbkkdijzjfssfbxgbvmxnz.streamlit.app/
+👉 https://loan-pred-approve-kpuqqryqvtwa7qhchzcpap.streamlit.app/
 
 ---
 
