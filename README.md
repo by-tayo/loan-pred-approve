@@ -82,6 +82,19 @@ The project objectives are:
 
 ---
 
+## Images/Screenshots of the Work
+![Streamlit Page 1](images/Streamlit_UI_1.png)
+![Streamlit Page 2](images/Streamlit_UI_2.png)
+![Streamlit Page 3](images/Streamlit_UI_3.png)
+![Streamlit Page 4](images/Streamlit_UI_4.png)
+![Streamlit Page 5](images/Streamlit_UI_5.png)
+![Streamlit Page 6](images/Streamlit_UI_6.png)
+![Streamlit Page 7](images/Streamlit_UI_7.png)
+![Streamlit Page 8](images/Streamlit_UI_8.png)
+![Streamlit Page 9](images/Streamlit_UI_9.png)
+
+---
+
 ## 🚀 Future Improvements
 
 * Persist trained models to disk (e.g. via `joblib`) so retraining isn't required on every session/deploy.
