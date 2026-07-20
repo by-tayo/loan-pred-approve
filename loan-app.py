@@ -61,6 +61,13 @@ try:
 except ImportError as e:
     IMBALANCED_LEARN_IMPORT_ERROR = str(e)
 
+# Explainable AI (XAI)
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+
 # ============================================================================
 # DATA LOADING AND PREPROCESSING FUNCTIONS
 # ============================================================================
@@ -183,21 +190,19 @@ def train_ensemble_models(X_train, y_train, X_test, y_test, use_smote=False):
 
     # Handle class imbalance if requested
     if use_smote and IMBALANCED_LEARN_AVAILABLE:
-         print("Applying class imbalance handling...")
-         print(f"Original distribution: {Counter(y_train)}")
-         
-         if st.session_state.get("imbalance_method") == "SMOTEENN":
+        print("Applying class imbalance handling...")
+        print(f"Original distribution: {Counter(y_train)}")
+
+        if st.session_state.get("imbalance_method") == "SMOTEENN":
             sampler = SMOTEENN(random_state=42)
             print("➡️ Using SMOTEENN")
-         else:
+        else:
             sampler = SMOTE(random_state=42)
             print("➡️ Using SMOTE")
-            
-            X_train_resampled, y_train_resampled = sampler.fit_resample(X_train, y_train)
-        
-            print(f"After resampling: {Counter(y_train_resampled)}")
-        
-            X_train_final, y_train_final = X_train_resampled, y_train_resampled
+
+        X_train_resampled, y_train_resampled = sampler.fit_resample(X_train, y_train)
+        print(f"After resampling: {Counter(y_train_resampled)}")
+        X_train_final, y_train_final = X_train_resampled, y_train_resampled
     else:
         X_train_final, y_train_final = X_train, y_train
 
@@ -405,6 +410,125 @@ def get_feature_importance(model, feature_names):
         .reset_index(drop=True)
     )
 
+
+def get_param_grid(model_name):
+    """Hyperparameter search space for GridSearchCV / RandomizedSearchCV, per model."""
+    grids = {
+        "Random Forest": {
+            "n_estimators": [50, 100, 200],
+            "max_depth": [None, 5, 10, 20],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "max_features": ["sqrt", "log2"],
+        },
+        "XGBoost": {
+            "n_estimators": [50, 100, 200],
+            "max_depth": [3, 6, 9],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "subsample": [0.8, 1.0],
+            "colsample_bytree": [0.8, 1.0],
+        },
+        "LightGBM": {
+            "n_estimators": [50, 100, 200],
+            "max_depth": [-1, 5, 10],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "num_leaves": [31, 50, 100],
+        },
+        "CatBoost": {
+            "iterations": [100, 200],
+            "depth": [4, 6, 8],
+            "learning_rate": [0.01, 0.05, 0.1],
+        },
+    }
+    return grids.get(model_name)
+
+
+# ============================================================================
+# EXPLAINABLE AI (SHAP)
+# ============================================================================
+
+def compute_shap_values(model, X_background, X_explain, max_background=100):
+    """
+    Build a SHAP TreeExplainer (all models trained in this app are tree-based:
+    XGBoost, LightGBM, CatBoost, Random Forest) and compute SHAP values for
+    the rows in X_explain.
+    """
+    if not SHAP_AVAILABLE:
+        raise RuntimeError("The 'shap' package is not installed.")
+
+    background = X_background.sample(n=min(max_background, len(X_background)), random_state=42)
+    explainer = shap.TreeExplainer(model, background)
+    raw_values = explainer.shap_values(X_explain)
+
+    # Normalize different explainer/model output shapes down to a single
+    # (n_samples, n_features) array for the "approved" (positive) class.
+    if isinstance(raw_values, list):
+        shap_values = raw_values[1] if len(raw_values) > 1 else raw_values[0]
+    else:
+        shap_values = raw_values
+        if shap_values.ndim == 3:
+            shap_values = shap_values[:, :, 1]
+
+    expected_value = explainer.expected_value
+    if isinstance(expected_value, (list, np.ndarray)):
+        expected_value = np.asarray(expected_value).reshape(-1)[-1]
+
+    return {
+        "shap_values": shap_values,
+        "expected_value": float(expected_value),
+        "X_explain": X_explain.reset_index(drop=True),
+    }
+
+
+def fig_shap_summary(shap_result, top_k=15):
+    """Global feature-impact plot: which features push predictions toward approval/rejection."""
+    plt.close("all")
+    shap.summary_plot(
+        shap_result["shap_values"],
+        shap_result["X_explain"],
+        max_display=top_k,
+        show=False,
+    )
+    fig = plt.gcf()
+    fig.tight_layout()
+    return fig
+
+
+def fig_shap_waterfall(shap_result, row_index: int = 0, max_display=12):
+    """Local explanation for a single applicant's prediction."""
+    X_explain = shap_result["X_explain"]
+    explanation = shap.Explanation(
+        values=shap_result["shap_values"][row_index],
+        base_values=shap_result["expected_value"],
+        data=X_explain.iloc[row_index].values,
+        feature_names=list(X_explain.columns),
+    )
+
+    plt.close("all")
+    shap.plots.waterfall(explanation, max_display=max_display, show=False)
+    fig = plt.gcf()
+    fig.tight_layout()
+    return fig
+
+
+def top_shap_contributors(shap_result, row_index: int = 0, top_k=5) -> str:
+    """Plain-language summary of the top SHAP contributors for one applicant."""
+    X_explain = shap_result["X_explain"]
+    row = shap_result["shap_values"][row_index]
+    feature_names = np.array(X_explain.columns)
+    order = np.argsort(np.abs(row))[::-1][:top_k]
+
+    lines = []
+    for i in order:
+        direction = "increased" if row[i] > 0 else "decreased"
+        value = X_explain.iloc[row_index][feature_names[i]]
+        lines.append(
+            f"- **{feature_names[i]}** (value = `{value:.3f}`) {direction} the approval likelihood "
+            f"(SHAP = `{row[i]:+.4f}`)"
+        )
+    return "\n".join(lines)
+
+
 # ============================================================================
 # STREAMLIT WEB APPLICATION
 # ============================================================================
@@ -519,98 +643,62 @@ def create_streamlit_app():
             st.write("ROC-AUC scores:", scores)
             st.metric("Mean ROC-AUC", scores.mean())
             
-    if run_grid and selected_model_name == "XGBoost":
-        param_grid = {
-            "n_estimators": [50, 100],
-            "max_depth": [3, 6],
-            "learning_rate": [0.05, 0.1]
-        }
-        
-        with st.spinner("Running GridSearchCV..."):
-            grid = GridSearchCV(
-                best_model,
-                param_grid=param_grid,
-                scoring="roc_auc",
-                cv=cv_folds,
-                n_jobs=-1
-            )
-            grid.fit(X_train, y_train)
-            
-            st.subheader("🔍 GridSearchCV Results")
-            st.write("Best Params:", grid.best_params_)
-            st.metric("Best ROC-AUC", grid.best_score_)
-            
-            # IMPORTANT: update best model
-            best_model = grid.best_estimator_
-            st.session_state.trained_bundle["models"][selected_model_name] = best_model
-            
+    if run_grid:
+        bundle = st.session_state.trained_bundle
+        grid_model = bundle["models"][selected_model_name]
+        X_train_search = bundle["X_train"]
+        y_train_search = bundle["y_train"]
+        param_grid = get_param_grid(selected_model_name)
+
+        if param_grid is None:
+            st.warning(f"GridSearchCV param grid not defined for {selected_model_name}.")
+        else:
+            with st.spinner("Running GridSearchCV..."):
+                grid = GridSearchCV(
+                    grid_model,
+                    param_grid=param_grid,
+                    scoring="roc_auc",
+                    cv=cv_folds,
+                    n_jobs=-1
+                )
+                grid.fit(X_train_search, y_train_search)
+
+                st.subheader("🔍 GridSearchCV Results")
+                st.write("Best Params:", grid.best_params_)
+                st.metric("Best ROC-AUC", grid.best_score_)
+
+                # Update model in session state
+                st.session_state.trained_bundle["models"][selected_model_name] = grid.best_estimator_
+
     if run_random:
         bundle = st.session_state.trained_bundle
-        best_model = bundle["models"][selected_model_name]
-        X_train = bundle["X_train"]
-        y_train = bundle["y_train"]
+        rand_model = bundle["models"][selected_model_name]
+        X_train_search = bundle["X_train"]
+        y_train_search = bundle["y_train"]
+        param_dist = get_param_grid(selected_model_name)
 
-    # Model-specific parameter grids
-    if selected_model_name == "Random Forest":
-        param_dist = {
-            "n_estimators": [50, 100, 200],
-            "max_depth": [None, 5, 10, 20],
-            "min_samples_split": [2, 5, 10],
-            "min_samples_leaf": [1, 2, 4],
-            "max_features": ["sqrt", "log2"]
-        }
+        if param_dist is None:
+            st.warning(f"RandomizedSearchCV not supported for {selected_model_name}.")
+        else:
+            with st.spinner("Running RandomizedSearchCV..."):
+                rand = RandomizedSearchCV(
+                    rand_model,
+                    param_distributions=param_dist,
+                    n_iter=10,
+                    cv=cv_folds,
+                    scoring="roc_auc",
+                    random_state=42,
+                    n_jobs=-1
+                )
 
-    elif selected_model_name == "XGBoost":
-        param_dist = {
-            "n_estimators": [50, 100, 200],
-            "max_depth": [3, 6, 9],
-            "learning_rate": [0.01, 0.05, 0.1],
-            "subsample": [0.8, 1.0],
-            "colsample_bytree": [0.8, 1.0]
-        }
+                rand.fit(X_train_search, y_train_search)
 
-    elif selected_model_name == "LightGBM":
-        param_dist = {
-            "n_estimators": [50, 100, 200],
-            "max_depth": [-1, 5, 10],
-            "learning_rate": [0.01, 0.05, 0.1],
-            "num_leaves": [31, 50, 100]
-        }
+                st.subheader("🎲 RandomizedSearchCV Results")
+                st.write("Best Params:", rand.best_params_)
+                st.metric("Best ROC-AUC", rand.best_score_)
 
-    elif selected_model_name == "CatBoost":
-        param_dist = {
-            "iterations": [100, 200],
-            "depth": [4, 6, 8],
-            "learning_rate": [0.01, 0.05, 0.1]
-        }
-
-
-
-    if run_random and selected_model_name not in ["Random Forest", "XGBoost", "LightGBM", "CatBoost"]:
-        st.warning("RandomizedSearchCV not supported for this model.")
-        st.stop()
-
-
-    if run_random:
-        with st.spinner("Running RandomizedSearchCV..."):
-            rand = RandomizedSearchCV(
-                best_model,
-                param_distributions=param_dist,
-                n_iter=10,
-                cv=cv_folds,
-                scoring="roc_auc",
-                random_state=42,
-                n_jobs=-1
-            )
-            
-            rand.fit(X_train, y_train)
-            
-            st.subheader("🎲 RandomizedSearchCV Results")
-            st.write("Best Params:", rand.best_params_)
-            st.metric("Best ROC-AUC", rand.best_score_)
-
-            # Update model in session state
-            st.session_state.trained_bundle["models"][selected_model_name] = rand.best_estimator_
+                # Update model in session state
+                st.session_state.trained_bundle["models"][selected_model_name] = rand.best_estimator_
 
     # ------------------------------------------------------------------
     # Train model button
@@ -792,6 +880,30 @@ def create_streamlit_app():
                 title="Top 10 Feature Importances"
             )
             st.plotly_chart(fig, use_container_width=True)
+
+        # Explainable AI (SHAP): explain this specific applicant's prediction
+        st.header("🧠 Why This Decision? (SHAP Explainability)")
+        if SHAP_AVAILABLE:
+            try:
+                shap_result = compute_shap_values(best_model, bundle["X_train"], input_data)
+                contributors_text = top_shap_contributors(shap_result, row_index=0)
+                st.markdown(f"**Top factors behind this applicant's prediction:**\n\n{contributors_text}")
+
+                waterfall_fig = fig_shap_waterfall(shap_result, row_index=0)
+                st.pyplot(waterfall_fig)
+
+                with st.expander("📊 Global feature impact (SHAP summary across the test set)"):
+                    X_test_bundle = bundle["X_test"]
+                    X_test_sample = X_test_bundle.sample(
+                        n=min(200, len(X_test_bundle)), random_state=42
+                    )
+                    global_shap_result = compute_shap_values(best_model, bundle["X_train"], X_test_sample)
+                    summary_fig = fig_shap_summary(global_shap_result)
+                    st.pyplot(summary_fig)
+            except Exception as e:
+                st.warning(f"⚠️ Could not generate SHAP explanation: {e}")
+        else:
+            st.info("Install the `shap` package (see requirements.txt) to see feature-level explanations for this prediction.")
 
         st.header("📐 Model Performance (Test Set)")
         
