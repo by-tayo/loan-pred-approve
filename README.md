@@ -34,6 +34,7 @@ The project objectives are:
 
 * `loan_prediction_data.csv` – Dataset containing applicant and loan information.
 * `loan data.ipynb` – Jupyter Notebook containing preprocessing, model training, evaluation, and visualizations.
+* `loan-app.py` – Streamlit dashboard/API: ensemble model training, hyperparameter tuning, class-imbalance handling, and SHAP explainability (also deployed live, see link above).
 
 ---
 
@@ -41,7 +42,11 @@ The project objectives are:
 
 * Python
 * Pandas / NumPy – Data preprocessing and handling categorical variables.
-* Scikit-learn – Logistic Regression, Decision Trees, Random Forest, evaluation metrics.
+* Scikit-learn – Logistic Regression, Decision Trees, Random Forest, cross-validation, GridSearchCV/RandomizedSearchCV, evaluation metrics.
+* XGBoost / LightGBM / CatBoost – Advanced gradient-boosting ensembles for higher accuracy.
+* imbalanced-learn – SMOTE / SMOTEENN for class imbalance handling.
+* SHAP – Explainable AI (XAI): global and per-applicant interpretation of loan decisions.
+* Streamlit / Plotly – Interactive dashboard and visualizations.
 * Matplotlib / Seaborn – Data exploration and visualization of results.
 
 ---
@@ -49,24 +54,36 @@ The project objectives are:
 ## 📝 Keynotes
 
 * Applied data cleaning and preprocessing (handling missing values, encoding categorical features, scaling).
-* Built and compared models such as:
+* Built and compared multiple models, including advanced ensemble methods:
   - Logistic Regression (baseline model)
   - Decision Tree Classifier
   - Random Forest Classifier
+  - **XGBoost**, **LightGBM**, **CatBoost**
+
+* Tuned and validated models with:
+  - Stratified k-fold cross-validation
+  - **GridSearchCV** and **RandomizedSearchCV** hyperparameter search, per-model search spaces
+
+* Handled class imbalance in the target (`Loan_Status`) with **SMOTE** and **SMOTEENN** resampling, selectable from the app sidebar.
 
 * Evaluated performance with metrics:
   - Accuracy
   - Precision, Recall, F1-score
+  - ROC-AUC, ROC curve, threshold-sensitivity analysis
   - Confusion Matrix
 
+* Added explainable AI (XAI) with **SHAP**:
+  - Per-applicant waterfall plot and plain-language "why was this application approved/rejected" breakdown for every prediction
+  - Global feature-impact summary plot across a sample of the test set
+
 * Visualized model results and feature importance to interpret decision-making factors.
+
+* Deployed as an interactive **Streamlit web application** (see link above) where users can enter applicant details and get a live prediction with full explainability.
 
 ---
 
 ## 🚀 Future Improvements
 
-* Apply advanced ensemble methods (XGBoost, LightGBM, CatBoost) for higher accuracy.
-* Use cross-validation and hyperparameter tuning (GridSearchCV, RandomizedSearchCV).
-* Handle class imbalance with SMOTE or other resampling methods.
-* Incorporate explainable AI (XAI) tools such as SHAP or LIME to improve interpretability.
-* Deploy the model as a web application to allow users to test loan approval predictions interactively.
+* Persist trained models to disk (e.g. via `joblib`) so retraining isn't required on every session/deploy.
+* Extend hyperparameter tuning with Bayesian optimization (e.g. Optuna) for a more efficient search than Grid/RandomizedSearchCV.
+* Add LIME as a second, model-agnostic XAI method alongside SHAP for cross-checking explanations.
